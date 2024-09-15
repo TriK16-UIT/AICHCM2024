@@ -1,0 +1,17 @@
+Data/
+.venv/
+DataPreprocessing/faiss_clip.bin
+DataPreprocessing/faiss_clip_l14.bin
+DataPreprocessing/idx2keyframe.json
+DataPreprocessing/map_keyframes.json
+DataPreprocessing/Yolov10-AIChallenge 
+DataPreprocessing/object_classes.json
+DataPreprocessing/object.json
+DataPreprocessing/DataPreprocessing.rar
+test.py
+__pycache__
+DataPreprocessing/TransNetV2
+input/
+output/
+submission/
+submission.zip
