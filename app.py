@@ -63,8 +63,12 @@ st.title("Image Retrieval System")
 # Initialize session state
 if 'images' not in st.session_state:
     st.session_state.images = []
-if 'selected_image' not in st.session_state:
-    st.session_state.selected_images = None
+if 'expanded_images' not in st.session_state:
+    st.session_state.expanded_images = []
+if 'selected_search_images' not in st.session_state:
+    st.session_state.selected_search_images = []
+if 'selected_expanded_images' not in st.session_state:
+    st.session_state.selected_expanded_images = []
 if 'expand_count' not in st.session_state:
     st.session_state.expand_count = 3
 if 'search_results' not in st.session_state:
@@ -105,54 +109,65 @@ if st.button("Search"):
         scores, keyframe_paths, idx_images, images_with_captions = get_images_from_query(query, k, search_type, st.session_state.class_dict)
         st.session_state.search_results = (scores, keyframe_paths, idx_images)
         st.session_state.images = images_with_captions
-        st.session_state.selected_images = None
+        st.session_state.expanded_images = []
 
 # Display images and allow selection
 if st.session_state.images:
-    st.session_state.selected_images = image_select(
+    st.subheader("Search Results")
+    st.session_state.selected_search_images = image_select(
         "Select one or more images:", 
         [path for path, _ in st.session_state.images], 
         captions=[caption for _, caption in st.session_state.images],
-        return_value="index"
+        return_value="index",
+        use_container_width=True
     )
 
 # Expand functionality
+st.subheader("Expand Images")
 st.session_state.expand_count = st.number_input("Enter the number of nearby frames to expand:", min_value=1, value=st.session_state.expand_count)
 
 if st.button("Expand"):
-    if st.session_state.selected_images and len(st.session_state.selected_images) == 1:
-        selected_path = st.session_state.images[st.session_state.selected_images[0]][0]
+    if st.session_state.selected_search_images and len(st.session_state.selected_search_images) == 1:
+        selected_path = st.session_state.images[st.session_state.selected_search_images[0]][0]
         nearby_frames = get_nearby_frames(selected_path, st.session_state.expand_count)
         st.write("Expanded images:")
         
+        st.session_state.expanded_images = []
         cols = st.columns(3)
-        for i, frame in enumerate(nearby_frames):
-            with cols[i % 3]:
-                img = Image.open(frame)
-                st.image(img, use_column_width=True)
-                
-                # Extract and display relevant information
-                video_id, frame_idx = extract_video_id_and_frame_idx(frame, keyframeMapper)
-                formatted_path = os.path.splitext(os.path.relpath(frame, start="Data/improved_keyframes"))[0]
-                
-                st.caption(f"Video ID: {video_id}")
-                st.caption(f"Frame Index: {frame_idx}")
-                st.caption(f"Path: {formatted_path}")
-    elif not st.session_state.selected_images:
+        for i, frame in enumerate(nearby_frames):                
+            # Extract and display relevant information
+            video_id, frame_idx = extract_video_id_and_frame_idx(frame, keyframeMapper)
+            formatted_path = os.path.splitext(os.path.relpath(frame, start="Data/improved_keyframes"))[0]
+            caption = f"Video ID: {video_id}\nFrame Index: {frame_idx}\nPath: {formatted_path}"
+            st.session_state.expanded_images.append((frame, caption))
+    elif not st.session_state.selected_search_images:
         st.warning("Please select an image to expand.")
     else:
         st.warning("Please select only one image to expand.")
 
+if st.session_state.expanded_images:
+    st.subheader("Expanded Images")
+    st.session_state.selected_expanded_images = image_select(
+        "Select one or more expanded images:", 
+        [path for path, _ in st.session_state.expanded_images], 
+        captions=[caption for _, caption in st.session_state.expanded_images],
+        return_value="index",
+        use_container_width=True
+    )
+
 # Download results functionality
-if st.session_state.search_results:
-    scores, keyframe_paths, idx_images = st.session_state.search_results
+if st.session_state.images or st.session_state.expanded_images:
+    selected_search_images = [st.session_state.images[i] for i in st.session_state.selected_search_images] if st.session_state.selected_search_images else []
+    selected_expanded_images = [st.session_state.expanded_images[i] for i in st.session_state.selected_expanded_images] if st.session_state.selected_expanded_images else []
     
-    if st.session_state.selected_images:
-        selected_keyframe_paths = [keyframe_paths[i] for i in st.session_state.selected_images]
-        csv_data = download_as_csv(selected_keyframe_paths)
+    all_selected_images = selected_search_images + selected_expanded_images
+    
+    if all_selected_images:
+        csv_data = download_as_csv([image[0] for image in all_selected_images])
         download_label = "Download Selected Results as CSV"
     else:
-        csv_data = download_as_csv(keyframe_paths)
+        # all_images = st.session_state.images + st.session_state.expanded_images
+        csv_data = download_as_csv([image[0] for image in st.session_state.images])
         download_label = "Download All Results as CSV"
     
     st.download_button(
