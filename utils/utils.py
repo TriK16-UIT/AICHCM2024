@@ -87,17 +87,19 @@ def get_nearby_frames(keyframe_path, n):
     all_frame_ids = sorted(int(os.path.splitext(os.path.basename(f))[0]) for f in all_files)
     max_frame_id = max(all_frame_ids)
 
+    zfill_amount = len(str(max_frame_id))
+
     nearby_frames = []
 
     for i in range(keyframe_id - n, keyframe_id):
         if i > 0:  # Ensure frame number is positive
-            nearby_frames.append(f"{prefix}{str(i).zfill(3)}.jpg")
+            nearby_frames.append(f"{prefix}{str(i).zfill(zfill_amount)}.jpg")
 
     nearby_frames.append(keyframe_path)
 
     for i in range(keyframe_id + 1, keyframe_id + 1 + n):
         if i <= max_frame_id:
-            nearby_frames.append(f"{prefix}{str(i).zfill(3)}.jpg")
+            nearby_frames.append(f"{prefix}{str(i).zfill(zfill_amount)}.jpg")
 
     return nearby_frames         
 

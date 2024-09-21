@@ -1,5 +1,6 @@
 import streamlit as st
-from streamlit_image_select import image_select
+# from streamlit_image_select import image_select
+from streamlit_dash import image_select
 from utils.FAISS import Th3Faiss
 import json
 from PIL import Image
@@ -63,7 +64,7 @@ st.title("Image Retrieval System")
 if 'images' not in st.session_state:
     st.session_state.images = []
 if 'selected_image' not in st.session_state:
-    st.session_state.selected_image = None
+    st.session_state.selected_images = None
 if 'expand_count' not in st.session_state:
     st.session_state.expand_count = 3
 if 'search_results' not in st.session_state:
@@ -72,7 +73,7 @@ if 'class_dict' not in st.session_state:
     st.session_state.class_dict = {}
 
 # Search interface
-query = st.text_input("Nhập query:")
+query = st.text_input("Input query:")
 
 st.subheader("Select Objects and Quantities")
 col1, col2 = st.columns(2)
@@ -94,7 +95,7 @@ for obj, count in st.session_state.class_dict.items():
 if st.button("Clear Selection"):
     st.session_state.class_dict = {}
 
-k = st.number_input("Số lượng hình ảnh:", min_value=1, value=10)
+k = st.number_input("No. of images:", min_value=1, value=10)
 
 search_type = st.selectbox("Search Type", options=["text", "ocr_embedding", "ocr_tfidf"], index=0)
 
@@ -104,25 +105,25 @@ if st.button("Search"):
         scores, keyframe_paths, idx_images, images_with_captions = get_images_from_query(query, k, search_type, st.session_state.class_dict)
         st.session_state.search_results = (scores, keyframe_paths, idx_images)
         st.session_state.images = images_with_captions
-        st.session_state.selected_image = None
+        st.session_state.selected_images = None
 
 # Display images and allow selection
 if st.session_state.images:
-    st.session_state.selected_image = image_select(
-        "Chọn một hình ảnh:", 
+    st.session_state.selected_images = image_select(
+        "Select one or more images:", 
         [path for path, _ in st.session_state.images], 
         captions=[caption for _, caption in st.session_state.images],
         return_value="index"
     )
 
 # Expand functionality
-st.session_state.expand_count = st.number_input("Nhập số lượng nearby_frame muốn mở rộng:", min_value=1, value=st.session_state.expand_count)
+st.session_state.expand_count = st.number_input("Enter the number of nearby frames to expand:", min_value=1, value=st.session_state.expand_count)
 
 if st.button("Expand"):
-    if st.session_state.selected_image is not None:
-        selected_path = st.session_state.images[st.session_state.selected_image][0]
+    if st.session_state.selected_images and len(st.session_state.selected_images) == 1:
+        selected_path = st.session_state.images[st.session_state.selected_images[0]][0]
         nearby_frames = get_nearby_frames(selected_path, st.session_state.expand_count)
-        st.write("Hình ảnh đã mở rộng:")
+        st.write("Expanded images:")
         
         cols = st.columns(3)
         for i, frame in enumerate(nearby_frames):
@@ -137,14 +138,26 @@ if st.button("Expand"):
                 st.caption(f"Video ID: {video_id}")
                 st.caption(f"Frame Index: {frame_idx}")
                 st.caption(f"Path: {formatted_path}")
+    elif not st.session_state.selected_images:
+        st.warning("Please select an image to expand.")
+    else:
+        st.warning("Please select only one image to expand.")
 
 # Download results functionality
 if st.session_state.search_results:
     scores, keyframe_paths, idx_images = st.session_state.search_results
-    csv_data = download_as_csv(keyframe_paths)
+    
+    if st.session_state.selected_images:
+        selected_keyframe_paths = [keyframe_paths[i] for i in st.session_state.selected_images]
+        csv_data = download_as_csv(selected_keyframe_paths)
+        download_label = "Download Selected Results as CSV"
+    else:
+        csv_data = download_as_csv(keyframe_paths)
+        download_label = "Download All Results as CSV"
+    
     st.download_button(
-        label="Download Results as CSV",
+        label=download_label,
         data=csv_data,
-        file_name=f"search_results.csv",
+        file_name="search_results.csv",
         mime="text/csv"
     )
