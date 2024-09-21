@@ -12,12 +12,15 @@ import io
 @st.cache_resource
 def load_faiss_and_data():
     bin_file = "DataPreprocessing/faiss_clip_l14.bin"
+    ocr_bin_file = "DataPreprocessing/faiss_ocr.bin"
     json_file = "DataPreprocessing/idx2keyframe.json"
     json_keyframe_mapper_file = "DataPreprocessing/map_keyframes.json"
     json_object_file = "DataPreprocessing/object.json"
     json_classes_file = "DataPreprocessing/object_classes.json"
+    pkl_tfidf_transform_file = "DataPreprocessing/tfidf_transform_ocr.pkl"
+    npz_sparse_context_matrix_ocr_file = "DataPreprocessing/sparse_context_matrix_ocr.npz"
     
-    my_faiss = Th3Faiss(bin_file, json_file, json_object_file)
+    my_faiss = Th3Faiss(bin_file, ocr_bin_file, json_file, json_object_file, npz_sparse_context_matrix_ocr_file, pkl_tfidf_transform_file)
     
     with open(json_keyframe_mapper_file, 'r') as file:
         keyframeMapper = json.load(file)
@@ -29,8 +32,12 @@ def load_faiss_and_data():
 my_faiss, keyframeMapper, classesList = load_faiss_and_data()
 
 # Function to get images from query
-def get_images_from_query(query, k, class_dict):
-    scores, keyframe_paths, idx_images = my_faiss.search_by_text(query, k, class_dict)
+def get_images_from_query(query, k, search_type="text", class_dict={}):
+    if search_type == "text":
+        scores, keyframe_paths, idx_images = my_faiss.search_by_text(query, k, class_dict)
+    else:
+        search_type = search_type.replace("ocr_", "")
+        scores, keyframe_paths, idx_images = my_faiss.search_by_ocr(query, k, search_type)
 
     images_with_captions = []
     for score, path, idx in zip(scores, keyframe_paths, idx_images):
@@ -89,10 +96,12 @@ if st.button("Clear Selection"):
 
 k = st.number_input("Số lượng hình ảnh:", min_value=1, value=10)
 
+search_type = st.selectbox("Search Type", options=["text", "ocr_embedding", "ocr_tfidf"], index=0)
+
 if st.button("Search"):
     if query and k:
         print(st.session_state.class_dict)
-        scores, keyframe_paths, idx_images, images_with_captions = get_images_from_query(query, k, st.session_state.class_dict)
+        scores, keyframe_paths, idx_images, images_with_captions = get_images_from_query(query, k, search_type, st.session_state.class_dict)
         st.session_state.search_results = (scores, keyframe_paths, idx_images)
         st.session_state.images = images_with_captions
         st.session_state.selected_image = None

@@ -3,6 +3,18 @@ import matplotlib.image as mpimg
 import csv
 import os
 import glob
+import re
+
+def get_video_number(filename):
+    match = re.search(r'L(\d+)', filename)
+    return int(match.group(1)) if match else 0
+
+def start_from_index(dir, index, format):
+    files = [f for f in os.listdir(dir) if f.endswith(format)]
+    files.sort(key=get_video_number)
+    files_to_process = [f for f in files if get_video_number(f) >= index]
+
+    return files_to_process
 
 def save_to_csv(output_file, lst_video_id, lst_frame_idx):
     with open(output_file, mode='w', newline='') as file:
