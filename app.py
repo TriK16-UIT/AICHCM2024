@@ -33,9 +33,10 @@ def load_faiss_and_data():
 my_faiss, keyframeMapper, classesList = load_faiss_and_data()
 
 # Function to get images from query
-def get_images_from_query(query, k, search_type="text", class_dict={}):
+def get_images_from_query(query, k, search_type="text", class_dict={}, index=None):
+    print(index)
     if search_type == "text":
-        scores, keyframe_paths, idx_images = my_faiss.search_by_text(query, k, class_dict)
+        scores, keyframe_paths, idx_images = my_faiss.search_by_text(query, k, class_dict, index)
     else:
         search_type = search_type.replace("ocr_", "")
         scores, keyframe_paths, idx_images = my_faiss.search_by_ocr(query, k, search_type)
@@ -46,7 +47,7 @@ def get_images_from_query(query, k, search_type="text", class_dict={}):
         caption = f"Score: {score:.4f} \n Index: {idx} \n Path: {formatted_path} \n Frame_idx: {extract_video_id_and_frame_idx(path, keyframeMapper)[1]}"
         images_with_captions.append((path, caption))
     
-    return scores, keyframe_paths, idx_images, images_with_captions
+    return images_with_captions
 
 # Function to save results as CSV
 def download_as_csv(keyframe_paths):
@@ -71,13 +72,12 @@ if 'selected_expanded_images' not in st.session_state:
     st.session_state.selected_expanded_images = []
 if 'expand_count' not in st.session_state:
     st.session_state.expand_count = 3
-if 'search_results' not in st.session_state:
-    st.session_state.search_results = None
 if 'class_dict' not in st.session_state:
     st.session_state.class_dict = {}
 
 # Search interface
 query = st.text_input("Input query:")
+idx = st.number_input("Index:", min_value=0, value=None)
 
 st.subheader("Select Objects and Quantities")
 col1, col2 = st.columns(2)
@@ -100,16 +100,16 @@ if st.button("Clear Selection"):
     st.session_state.class_dict = {}
 
 k = st.number_input("No. of images:", min_value=1, value=10)
-
 search_type = st.selectbox("Search Type", options=["text", "ocr_embedding", "ocr_tfidf"], index=0)
 
 if st.button("Search"):
     if query and k:
         print(st.session_state.class_dict)
-        scores, keyframe_paths, idx_images, images_with_captions = get_images_from_query(query, k, search_type, st.session_state.class_dict)
-        st.session_state.search_results = (scores, keyframe_paths, idx_images)
+        images_with_captions = get_images_from_query(query, k, search_type, st.session_state.class_dict, idx)
         st.session_state.images = images_with_captions
         st.session_state.expanded_images = []
+        st.session_state.selected_search_images = []
+        st.session_state.selected_expanded_images = []
 
 # Display images and allow selection
 if st.session_state.images:
@@ -157,8 +157,8 @@ if st.session_state.expanded_images:
 
 # Download results functionality
 if st.session_state.images or st.session_state.expanded_images:
-    selected_search_images = [st.session_state.images[i] for i in st.session_state.selected_search_images] if st.session_state.selected_search_images else []
-    selected_expanded_images = [st.session_state.expanded_images[i] for i in st.session_state.selected_expanded_images] if st.session_state.selected_expanded_images else []
+    selected_search_images = [st.session_state.images[i] for i in st.session_state.selected_search_images if i < len(st.session_state.images)]
+    selected_expanded_images = [st.session_state.expanded_images[i] for i in st.session_state.selected_expanded_images if i < len(st.session_state.expanded_images)]
     
     all_selected_images = selected_search_images + selected_expanded_images
     

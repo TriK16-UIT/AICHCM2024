@@ -30,7 +30,7 @@ class Th3Faiss:
         return {int(k):v for k, v in js.items()}
         
 
-    def search_by_text(self, query, k, class_dict):
+    def search_by_text(self, query, k, class_dict, index):
         query = self.translator.translate(query)
 
         print(query)
@@ -41,8 +41,18 @@ class Th3Faiss:
         query_features /= query_features.norm(dim=-1, keepdim=True)
         query_features = query_features.cpu().detach().numpy().astype(np.float32)
 
-        #Search in FAISS
-        scores, idx_image = self.index.search(query_features, k=k)
+        if index is None:
+            scores, idx_image = self.index.search(query_features, k=k)
+        else:
+            # Search for direct image (for DEBUG only)
+            id_selector = faiss.IDSelectorArray(index)
+            scores, idx_image = self.index.search(query_features, k=1, params=faiss.SearchParametersIVF(sel=id_selector)) 
+        
+        if isinstance(idx_image, int): 
+            idx_image = [idx_image]
+            scores = [scores]
+
+
         scores = scores.flatten()
         idx_image = idx_image.flatten()
         keyframe_paths = [self.idx2keyframe[idx] for idx in idx_image]
