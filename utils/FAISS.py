@@ -18,8 +18,10 @@ class Th3Faiss:
         self.ObjectDetector = ObjectDetector(object_file)
         self.OCRDetector = OCRDetector(bin_ocr_file, sparse_context_file, tfidf_transform_file, self.idx2keyframe, self.__device)
         # self.clip_model = SentenceTransformer('sentence-transformers/clip-ViT-B-32', device=self.__device)
-        self.clip_model, _, _ = open_clip.create_model_and_transforms('ViT-L-14', device=self.__device, pretrained='datacomp_xl_s13b_b90k')
-        self.clip_tokenizer = open_clip.get_tokenizer('ViT-L-14')
+        # self.clip_model, _, _ = open_clip.create_model_and_transforms('ViT-L-14', device=self.__device, pretrained='datacomp_xl_s13b_b90k')
+        # self.clip_tokenizer = open_clip.get_tokenizer('ViT-L-14')
+        self.clip_model, _, _ = open_clip.create_model_and_transforms('ViT-H-14-378-quickgelu', device=self.__device, pretrained='dfn5b')
+        self.clip_tokenizer = open_clip.get_tokenizer('ViT-H-14')
 
     def load_bin_file(self, bin_file: str):
         return faiss.read_index(bin_file)
@@ -30,7 +32,7 @@ class Th3Faiss:
         return {int(k):v for k, v in js.items()}
         
 
-    def search_by_text(self, query, k, class_dict, index):
+    def search_by_text(self, query, k, class_dict, index, filter_type):
         query = self.translator.translate(query)
 
         print(query)
@@ -43,10 +45,14 @@ class Th3Faiss:
 
         if index is None:
             scores, idx_image = self.index.search(query_features, k=k)
-        else:
+        elif filter_type == "including":
             # Search for direct image (for DEBUG only)
             id_selector = faiss.IDSelectorArray(index)
             scores, idx_image = self.index.search(query_features, k=1, params=faiss.SearchParametersIVF(sel=id_selector)) 
+        elif filter_type == "excluding":
+            filter_ids = [id for id in range(self.index.ntotal) if id not in index]
+            id_selector = faiss.IDSelectorArray(filter_ids)
+            scores, idx_image = self.index.search(query_features, k=k, params=faiss.SearchParametersIVF(sel=id_selector))
         
         if isinstance(idx_image, int): 
             idx_image = [idx_image]

@@ -12,10 +12,13 @@ DataPreprocessing/object_classes.json
 DataPreprocessing/object.json
 DataPreprocessing/DataPreprocessing.rar
 DataPreprocessing/PaddleOCR
+DataPreprocessing/faiss_clip_h14.bin
 !DataPreprocessing/PaddleOCR/extract_ocr.py
 !DataPreprocessing/Yolov10-AIChallenge/saving_class_dict.py
 !DataPreprocessing/Yolov10-AIChallenge/extracting_classes.py
 test.py
+test2.py
+static
 __pycache__
 DataPreprocessing/TransNetV2
 input/
