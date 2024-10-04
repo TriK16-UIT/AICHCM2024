@@ -11,6 +11,8 @@ SCENES_PATH = "Data/scenes"
 OCR_PATH = "Data/ocr"
 IMPROVED_KEYFRAME_PATH = "Data/improved_keyframes"
 IMPROVED_MAP_KEYFRAMES_PATH = "Data/improved_map-keyframes"
+AUDIO_DETECTION_PATH = "Data/audio_detection"
+AUDIO_PATH = "Data/audio"
 #CONST
 FEATURE_SHAPE = 512
 IMPROVED_FEATURE_SHAPE = 768

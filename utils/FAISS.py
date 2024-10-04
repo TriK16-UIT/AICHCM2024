@@ -5,18 +5,29 @@ import json
 from utils.Translation import Translation
 from utils.ObjectDetector import ObjectDetector
 from utils.OCRDetector import OCRDetector
+from utils.SpeechDetector import SpeechDetector
 import open_clip
 import re
 
 class Th3Faiss:
-    def __init__(self, bin_clip_file: str, bin_ocr_file:str, json_idx_2_keyframe_file: str, object_file: str, sparse_context_file: str, tfidf_transform_file: str):
+    def __init__(self, bin_clip_file: str, 
+                 bin_ocr_file:str, 
+                 json_idx_2_keyframe_file: str, 
+                 json_audio_id2id_file: str,
+                 object_file: str, 
+                 sparse_context_file: str,
+                 sparse_context_audio_file: str, 
+                 tfidf_transform_file: str,
+                 tfidf_transform_audio_file):
         self.index = self.load_bin_file(bin_clip_file)
         self.idx2keyframe = self.load_json_file(json_idx_2_keyframe_file)
+        self.audio_id2id = self.load_json_file(json_audio_id2id_file)
 
         self.__device = "cuda" if torch.cuda.is_available() else "cpu"
         self.translator = Translation()
         self.ObjectDetector = ObjectDetector(object_file)
         self.OCRDetector = OCRDetector(bin_ocr_file, sparse_context_file, tfidf_transform_file, self.idx2keyframe, self.__device)
+        self.SpeechDetector = SpeechDetector(sparse_context_audio_file, tfidf_transform_audio_file, self.idx2keyframe, self.audio_id2id)
         # self.clip_model = SentenceTransformer('sentence-transformers/clip-ViT-B-32', device=self.__device)
         # self.clip_model, _, _ = open_clip.create_model_and_transforms('ViT-L-14', device=self.__device, pretrained='datacomp_xl_s13b_b90k')
         # self.clip_tokenizer = open_clip.get_tokenizer('ViT-L-14')
@@ -70,6 +81,10 @@ class Th3Faiss:
     
     def search_by_ocr(self, query, k, search_method="embedding"):
         scores, keyframe_paths, idx_image = self.OCRDetector.search(query, k, search_method)
+        return scores, keyframe_paths, idx_image
+    
+    def search_by_speech(self, query, k):
+        scores, keyframe_paths, idx_image = self.SpeechDetector.search(query, k)
         return scores, keyframe_paths, idx_image
 
 

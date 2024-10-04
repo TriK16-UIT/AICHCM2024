@@ -6,6 +6,8 @@ DataPreprocessing/faiss_ocr.bin
 DataPreprocessing/idx2keyframe.json
 DataPreprocessing/map_keyframes.json
 DataPreprocessing/sparse_context_matrix_ocr.npz
+DataPreprocessing/sparse_context_matrix_audio.npz
+DataPreprocessing/tfidf_transform_audio.pkl
 DataPreprocessing/tfidf_transform_ocr.pkl
 DataPreprocessing/Yolov10-AIChallenge 
 DataPreprocessing/object_classes.json
@@ -19,6 +21,7 @@ DataPreprocessing/faiss_clip_h14.bin
 test.py
 test2.py
 static
+test3.py
 __pycache__
 DataPreprocessing/TransNetV2
 input/
