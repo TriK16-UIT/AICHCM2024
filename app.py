@@ -24,6 +24,7 @@ sideb = st.sidebar
 @st.cache_resource
 def load_faiss_and_data():
     bin_file = "DataPreprocessing/faiss_clip_h14.bin"
+    blip_bin_file = "DataPreprocessing/faiss_blip_vitg.bin"
     ocr_bin_file = "DataPreprocessing/faiss_ocr.bin"
     json_file = "DataPreprocessing/idx2keyframe.json"
     json_audio_file = "DataPreprocessing/audio_id2id.json"
@@ -35,7 +36,7 @@ def load_faiss_and_data():
     npz_sparse_context_matrix_ocr_file = "DataPreprocessing/sparse_context_matrix_ocr.npz"
     npz_sparse_context_matrix_audio_file = "DataPreprocessing/sparse_context_matrix_audio.npz"
     
-    my_faiss = Th3Faiss(bin_file, ocr_bin_file, json_file, json_audio_file, json_object_file, npz_sparse_context_matrix_ocr_file, npz_sparse_context_matrix_audio_file, pkl_tfidf_transform_file, pkl_tfidf_transform_audio_file)
+    my_faiss = Th3Faiss(bin_file, blip_bin_file, ocr_bin_file, json_file, json_audio_file, json_object_file, npz_sparse_context_matrix_ocr_file, npz_sparse_context_matrix_audio_file, pkl_tfidf_transform_file, pkl_tfidf_transform_audio_file)
     
     with open(json_keyframe_mapper_file, 'r') as file:
         keyframeMapper = json.load(file)
@@ -47,10 +48,11 @@ def load_faiss_and_data():
 my_faiss, keyframeMapper, classesList = load_faiss_and_data()
 
 # Function to get images from query
-def get_images_from_query(query, k, search_type="text", class_dict={}, index=None, filter_type="including"):
+def get_images_from_query(query, k, search_type="text", class_dict={}, index=None, filter_type="including", model="clip"):
     print(index)
+    print(model)
     if search_type == "text":
-        scores, keyframe_paths, idx_images = my_faiss.search_by_text(query, k, class_dict, index, filter_type)
+        scores, keyframe_paths, idx_images = my_faiss.search_by_text(query, k, class_dict, index, filter_type, model)
     elif search_type == "speech":
         scores, keyframe_paths, idx_images = my_faiss.search_by_speech(query, k)
     else:
@@ -116,6 +118,10 @@ con1 = sideb.container(border=True)
 query = con1.text_input("Input query:")
 idx = con1.number_input("Index:", min_value=0, value=None)
 
+# Model selection
+con5 = sideb.container(border=True)
+model = con5.selectbox("Select Model", options=["clip", "blip"], index=0)
+
 # Seject Object for reranking
 con2 = sideb.container(border=True)
 col1, col2 = con2.columns(2)
@@ -142,7 +148,7 @@ if col6.button("Search"):
     if query and k:
         print(st.session_state.class_dict)
         st.session_state.search_type = search_type
-        images_with_captions = get_images_from_query(query, k, st.session_state.search_type, st.session_state.class_dict, idx, filter_type="including")
+        images_with_captions = get_images_from_query(query, k, st.session_state.search_type, st.session_state.class_dict, idx, filter_type="including", model=model)
         st.session_state.images = images_with_captions
         st.session_state.expanded_images = []
         st.session_state.selected_search_images = []
@@ -196,7 +202,7 @@ with tabs[0]:
 
                     st.session_state.accumulated_unselected_indices.extend(unselected_indices)
 
-                    images_with_captions = get_images_from_query(query, k, st.session_state.search_type, st.session_state.class_dict, st.session_state.accumulated_unselected_indices, filter_type="excluding")
+                    images_with_captions = get_images_from_query(query, k, st.session_state.search_type, st.session_state.class_dict, st.session_state.accumulated_unselected_indices, filter_type="excluding", model=model)
                     st.session_state.images = images_with_captions
                     st.session_state.selected_search_images = []
                     st.rerun()

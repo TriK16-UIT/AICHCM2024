@@ -2,6 +2,7 @@ Data/
 .venv/
 DataPreprocessing/faiss_clip.bin
 DataPreprocessing/faiss_clip_l14.bin
+DataPreprocessing/faiss_blip_vitg.bin
 DataPreprocessing/faiss_ocr.bin
 DataPreprocessing/idx2keyframe.json
 DataPreprocessing/map_keyframes.json
@@ -18,8 +19,11 @@ DataPreprocessing/faiss_clip_h14.bin
 !DataPreprocessing/PaddleOCR/extract_ocr.py
 !DataPreprocessing/Yolov10-AIChallenge/saving_class_dict.py
 !DataPreprocessing/Yolov10-AIChallenge/extracting_classes.py
+frontend/node_modules
 test.py
 test2.py
+test3.py
+test4.py
 static
 test3.py
 __pycache__
