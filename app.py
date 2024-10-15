@@ -25,7 +25,6 @@ sideb = st.sidebar
 def load_faiss_and_data():
     bin_file = "DataPreprocessing/faiss_clip_h14.bin"
     blip_bin_file = "DataPreprocessing/faiss_blip_vitg.bin"
-    ocr_bin_file = "DataPreprocessing/faiss_ocr.bin"
     json_file = "DataPreprocessing/idx2keyframe.json"
     json_audio_file = "DataPreprocessing/audio_id2id.json"
     json_keyframe_mapper_file = "DataPreprocessing/map_keyframes.json"
@@ -36,7 +35,7 @@ def load_faiss_and_data():
     npz_sparse_context_matrix_ocr_file = "DataPreprocessing/sparse_context_matrix_ocr.npz"
     npz_sparse_context_matrix_audio_file = "DataPreprocessing/sparse_context_matrix_audio.npz"
     
-    my_faiss = Th3Faiss(bin_file, blip_bin_file, ocr_bin_file, json_file, json_audio_file, json_object_file, npz_sparse_context_matrix_ocr_file, npz_sparse_context_matrix_audio_file, pkl_tfidf_transform_file, pkl_tfidf_transform_audio_file)
+    my_faiss = Th3Faiss(bin_file, blip_bin_file, json_file, json_audio_file, json_object_file, npz_sparse_context_matrix_ocr_file, npz_sparse_context_matrix_audio_file, pkl_tfidf_transform_file, pkl_tfidf_transform_audio_file)
     
     with open(json_keyframe_mapper_file, 'r') as file:
         keyframeMapper = json.load(file)
@@ -49,15 +48,12 @@ my_faiss, keyframeMapper, classesList = load_faiss_and_data()
 
 # Function to get images from query
 def get_images_from_query(query, k, search_type="text", class_dict={}, index=None, filter_type="including", model="clip"):
-    print(index)
-    print(model)
     if search_type == "text":
         scores, keyframe_paths, idx_images = my_faiss.search_by_text(query, k, class_dict, index, filter_type, model)
     elif search_type == "speech":
         scores, keyframe_paths, idx_images = my_faiss.search_by_speech(query, k)
     else:
-        search_type = search_type.replace("ocr_", "")
-        scores, keyframe_paths, idx_images = my_faiss.search_by_ocr(query, k, search_type)
+        scores, keyframe_paths, idx_images = my_faiss.search_by_ocr(query, k)
 
     images_with_captions = []
     for score, path, idx in zip(scores, keyframe_paths, idx_images):
@@ -141,7 +137,7 @@ st.markdown(f"<p style='display:inline'>{inline_text}</p>", unsafe_allow_html=Tr
 con3 = sideb.container(border=True)
 k = con3.number_input("No. of images:", min_value=1, value=10)
 col5, col6 = con3.columns(2, vertical_alignment="bottom")
-search_type = col5.selectbox("Search Type", options=["text", "ocr_embedding", "ocr_tfidf", "speech"], index=0)
+search_type = col5.selectbox("Search Type", options=["text", "ocr", "speech"], index=0)
 sort_type = con3.selectbox("Sort Type", options=["default", "video_id"], index=0)
 col6.write("# ")
 if col6.button("Search"):

@@ -1,5 +1,7 @@
 Data/
 .venv/
+DataPreprocessing/audio_id2id.json
+DataPreprocessing/audio_id2text.json
 DataPreprocessing/faiss_clip.bin
 DataPreprocessing/faiss_clip_l14.bin
 DataPreprocessing/faiss_blip_vitg.bin

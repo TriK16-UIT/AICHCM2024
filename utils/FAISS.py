@@ -11,7 +11,6 @@ from utils.models import BaseModel
 class Th3Faiss:
     def __init__(self, bin_clip_file: str,
                  bin_blip_file: str, 
-                 bin_ocr_file:str, 
                  json_idx_2_keyframe_file: str, 
                  json_audio_id2id_file: str,
                  object_file: str, 
@@ -30,7 +29,7 @@ class Th3Faiss:
 
         self.translator = Translation()
         self.ObjectDetector = ObjectDetector(object_file)
-        self.OCRDetector = OCRDetector(bin_ocr_file, sparse_context_file, tfidf_transform_file, self.idx2keyframe, self.device)
+        self.OCRDetector = OCRDetector(sparse_context_file, tfidf_transform_file, self.idx2keyframe)
         self.SpeechDetector = SpeechDetector(sparse_context_audio_file, tfidf_transform_audio_file, self.idx2keyframe, self.audio_id2id)
     
         self.clip_model = BaseModel(model_name="clip", device=self.device)
@@ -86,8 +85,8 @@ class Th3Faiss:
 
         return scores, keyframe_paths, idx_image
     
-    def search_by_ocr(self, query, k, search_method="embedding"):
-        scores, keyframe_paths, idx_image = self.OCRDetector.search(query, k, search_method)
+    def search_by_ocr(self, query, k):
+        scores, keyframe_paths, idx_image = self.OCRDetector.search(query, k)
         return scores, keyframe_paths, idx_image
     
     def search_by_speech(self, query, k):

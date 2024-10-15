@@ -12,11 +12,27 @@ from tqdm import tqdm
 import sys
 import re
 
+def get_video_number(filename):
+    match = re.search(r'L(\d+)', filename)
+    return int(match.group(1)) if match else 0
+
+def start_from_index(dir, index, format):
+    files = [f for f in os.listdir(dir) if f.endswith(format)]
+    files.sort(key=get_video_number)
+    files_to_process = [f for f in files if get_video_number(f) >= index]
+
+    return files_to_process
+
 sys.path.append('..')
 from config import AUDIO_DETECTION_PATH, AUDIO_PATH, VIDEOS_PATH
 video_dir = "../" + VIDEOS_PATH
 audio_dir = "../" + AUDIO_PATH
 audio_detection_dir = "../" + AUDIO_DETECTION_PATH
+
+video_files_to_process = start_from_index(video_dir, 25, "")
+
+print(video_files_to_process[0])
+print(len(video_files_to_process))
 
 def preprocess_text(text: str):
     text = text.lower()
@@ -31,7 +47,7 @@ print(device)
 model = whisperx.load_model("large-v2", device, compute_type="float16")
 
 batch_size=8
-for video_filename in os.listdir(video_dir):
+for video_filename in tqdm(video_files_to_process):
     video_path = os.path.join(video_dir, video_filename)
     video = VideoFileClip(video_path)
     audio_path = os.path.join(audio_dir, video_filename).replace("mp4", "wav")
