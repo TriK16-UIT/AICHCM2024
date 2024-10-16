@@ -5,7 +5,7 @@ from utils.FAISS import Th3Faiss
 import json
 from PIL import Image
 import os
-from utils.utils import get_nearby_frames, extract_video_id_and_frame_idx
+from utils.utils import get_nearby_frames, extract_video_id_and_info
 import csv
 import io
 import re
@@ -27,7 +27,7 @@ def load_faiss_and_data():
     blip_bin_file = "DataPreprocessing/faiss_blip_vitg.bin"
     json_file = "DataPreprocessing/idx2keyframe.json"
     json_audio_file = "DataPreprocessing/audio_id2id.json"
-    json_keyframe_mapper_file = "DataPreprocessing/map_keyframes.json"
+    json_keyframe_mapper_file = "DataPreprocessing/map_keyframes_final.json"
     json_object_file = "DataPreprocessing/object.json"
     json_classes_file = "DataPreprocessing/object_classes.json"
     pkl_tfidf_transform_file = "DataPreprocessing/tfidf_transform_ocr.pkl"
@@ -58,7 +58,7 @@ def get_images_from_query(query, k, search_type="text", class_dict={}, index=Non
     images_with_captions = []
     for score, path, idx in zip(scores, keyframe_paths, idx_images):
         formatted_path = os.path.splitext(os.path.relpath(path, start="Data/improved_keyframes"))[0]
-        caption = f"Score: {score:.4f} \n Index: {idx} \n Path: {formatted_path} \n Frame_idx: {extract_video_id_and_frame_idx(path, keyframeMapper)[1]}"
+        caption = f"Score: {score:.4f} \n Index: {idx} \n Path: {formatted_path} \n Frame_idx: {extract_video_id_and_info(path, keyframeMapper)[1]}"
         images_with_captions.append((path, caption))
     
     return images_with_captions
@@ -68,7 +68,7 @@ def download_as_csv(keyframe_paths):
     output = io.StringIO()
     writer = csv.writer(output)
     for path in keyframe_paths:
-        video_id, frame_idx = extract_video_id_and_frame_idx(path, keyframeMapper)
+        video_id, frame_idx, _ = extract_video_id_and_info(path, keyframeMapper)
         writer.writerow([video_id, frame_idx])
     return output.getvalue()
 
@@ -76,7 +76,7 @@ def download_as_csv(keyframe_paths):
 def sort_images_by_video_id(images_with_captions):
     sorted_images = {}
     for path, caption in images_with_captions:
-        video_id, _ = extract_video_id_and_frame_idx(path, keyframeMapper)
+        video_id, _, _ = extract_video_id_and_info(path, keyframeMapper)
         if video_id not in sorted_images:
             sorted_images[video_id] = []
         sorted_images[video_id].append((path, caption))
@@ -218,7 +218,7 @@ if col8.button("Expand"):
         cols = st.columns(3)
         for i, frame in enumerate(nearby_frames):                
             # Extract and display relevant information
-            video_id, frame_idx = extract_video_id_and_frame_idx(frame, keyframeMapper)
+            video_id, frame_idx, _ = extract_video_id_and_info(frame, keyframeMapper)
             formatted_path = os.path.splitext(os.path.relpath(frame, start="Data/improved_keyframes"))[0]
             caption = f"Video ID: {video_id}\nFrame Index: {frame_idx}\nPath: {formatted_path}"
             st.session_state.expanded_images.append((frame, caption))
@@ -244,7 +244,6 @@ if st.session_state.images or st.session_state.expanded_images:
     selected_expanded_images = [st.session_state.expanded_images[i] for i in st.session_state.selected_expanded_images if i < len(st.session_state.expanded_images)]
     
     all_selected_images = selected_search_images + selected_expanded_images
-    
     if all_selected_images:
         csv_data = download_as_csv([image[0] for image in all_selected_images])
         download_label = "Download Selected Results as CSV"

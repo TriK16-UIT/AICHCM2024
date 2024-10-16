@@ -22,14 +22,15 @@ def save_to_csv(output_file, lst_video_id, lst_frame_idx):
         for video_id, frame_idx in zip(lst_video_id, lst_frame_idx):
             writer.writerow([video_id, frame_idx])
 
-def extract_video_id_and_frame_idx(keyframe_path, keyframeMapper):
+def extract_video_id_and_info(keyframe_path, keyframeMapper):
     parts = keyframe_path.split(os.sep)
     video_id = parts[-2]
     keyframe_id = os.path.splitext(parts[-1])[0]
 
-    frame_idx = keyframeMapper.get(video_id, {}).get(str(int(keyframe_id)), 'N/A')
-
-    return video_id, frame_idx
+    frame_idx = keyframeMapper.get(video_id, {}).get(str(int(keyframe_id)), {}).get('frame_idx', 'N/A')
+    pts_time = keyframeMapper.get(video_id, {}).get(str(int(keyframe_id)), {}).get('pts_time', 'N/A')
+   
+    return video_id, frame_idx, pts_time
 
 def handle_multiple_inputs(input_dir, output_dir, faiss, keyframeMapper, k):
     os.makedirs(output_dir, exist_ok=True)

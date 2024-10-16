@@ -3,14 +3,21 @@ from streamlit_dash import image_select
 from utils.FAISS import Th3Faiss
 import json
 import os
-from utils.utils import get_nearby_frames, extract_video_id_and_frame_idx
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+from utils.utils import get_nearby_frames, extract_video_id_and_info
+from config import USERNAME, PASSWORD, VIDEOS_PATH
 import csv
 import io
 import re
-from functools import lru_cache
+import pandas as pd
+import warnings
+import requests
 
 st.set_page_config(layout="wide")
 st.title("Image Retrieval System")
+
+sideb = st.sidebar
+warning_con = st.container()
 
 # Cache the loading of FAISS and data
 @st.cache_resource
@@ -19,7 +26,7 @@ def load_faiss_and_data():
     blip_bin_file = "DataPreprocessing/faiss_blip_vitg.bin"
     json_file = "DataPreprocessing/idx2keyframe.json"
     json_audio_file = "DataPreprocessing/audio_id2id.json"
-    json_keyframe_mapper_file = "DataPreprocessing/map_keyframes.json"
+    json_keyframe_mapper_file = "DataPreprocessing/map_keyframes_final.json"
     json_object_file = "DataPreprocessing/object.json"
     json_classes_file = "DataPreprocessing/object_classes.json"
     pkl_tfidf_transform_file = "DataPreprocessing/tfidf_transform_ocr.pkl"
@@ -49,21 +56,21 @@ def get_images_from_query(query, k, search_type, model, class_dict_str, index, f
     else:
         scores, keyframe_paths, idx_images = my_faiss.search_by_ocr(query, k)
 
-    return [(path, f"Score: {score:.4f} \n Index: {idx} \n Path: {os.path.splitext(os.path.relpath(path, start='Data/improved_keyframes'))[0]} \n Frame_idx: {extract_video_id_and_frame_idx(path, keyframeMapper)[1]}")
+    return [(path, f"Score: {score:.4f} \n Index: {idx} \n Path: {os.path.splitext(os.path.relpath(path, start='Data/improved_keyframes'))[0]} \n Frame_idx: {extract_video_id_and_info(path, keyframeMapper)[1]}")
             for score, path, idx in zip(scores, keyframe_paths, idx_images)]
 
 def download_as_csv(keyframe_paths):
     output = io.StringIO()
     writer = csv.writer(output)
     for path in keyframe_paths:
-        video_id, frame_idx = extract_video_id_and_frame_idx(path, keyframeMapper)
+        video_id, frame_idx, _ = extract_video_id_and_info(path, keyframeMapper)
         writer.writerow([video_id, frame_idx])
     return output.getvalue()
 
 def sort_images_by_video_id(images_with_captions):
     sorted_images = {}
     for path, caption in images_with_captions:
-        video_id, _ = extract_video_id_and_frame_idx(path, keyframeMapper)
+        video_id, _, _ = extract_video_id_and_info(path, keyframeMapper)
         sorted_images.setdefault(video_id, []).append((path, caption))
     return sorted_images
 
@@ -71,15 +78,90 @@ def map_selected_indices_to_global(selected_local_indices, video_images, global_
     return [next(i for i, (path, _) in enumerate(global_images) if path == video_images[local_idx][0])
             for local_idx in selected_local_indices]
 
+def login_and_get_evaluation_id(username, password):
+    try:
+        login_url = "https://eventretrieval.one/api/v2/login"
+        login_payload = {
+            "username": username,
+            "password": password
+        }
+        headers = {'Content-Type': 'application/json'}
+        
+        login_response = requests.post(login_url, headers=headers, data=json.dumps(login_payload))
+        login_response.raise_for_status()
+        
+        session_data = login_response.json()
+        session_id = session_data.get('sessionId')
+        
+        evaluation_url = f"https://eventretrieval.one/api/v2/client/evaluation/list?session={session_id}"
+        evaluation_response = requests.get(evaluation_url)
+        evaluation_response.raise_for_status() 
+        
+        evaluation_data = evaluation_response.json()
+        evaluation_id = evaluation_data[0].get('id')
+
+        return session_id, evaluation_id
+
+    except requests.exceptions.HTTPError as http_err:
+        warning_con.warning(f"HTTP error occurred: {http_err}")
+        return None, None
+    except Exception as err:
+        warning_con.warning(f"Other error occurred: {err}")
+        return None, None
+    
+def submission(df, submission_type, session_id, evaluation_id):
+    answer_sets = []
+    if submission_type == "QA":
+        for index, row in df.iterrows():
+            answer_text = f"{row['QA']}-{row['Video ID']}-{row['pts_time']}"
+            answer_sets.append({"text": answer_text})
+        
+        submission_body = {
+            "answerSets": [
+                {
+                    "answers": answer_sets
+                }
+            ]
+        }
+    elif submission_type == "KIS":
+        for index, row in df.iterrows():
+            answer_sets.append({
+                "mediaItemName": row['Video ID'],
+                "start": row['pts_time'],
+                "end": row['end_time']
+            })
+
+        submission_body = {
+            "answerSets": [
+                {
+                    "answers": answer_sets
+                }
+            ]
+        }
+
+    url = f"https://eventretrieval.one/api/v2/submit/{evaluation_id}?session={session_id}"
+    headers = {
+        'Content-Type': 'application/json'
+    }
+
+    st.write(submission_body)
+    response = requests.post(url, headers=headers, data=json.dumps(submission_body))
+
+    return response.status_code, response.text
+
+
 # Initialize session state
 for key in ['images', 'expanded_images', 'selected_search_images', 'selected_expanded_images', 
             'expand_count', 'class_dict', 'accumulated_unselected_indices', 'search_type']:
     if key not in st.session_state:
         st.session_state[key] = [] if key.startswith('selected') or key in ['images', 'expanded_images', 'accumulated_unselected_indices'] else 3 if key == 'expand_count' else {} if key == 'class_dict' else None
-
-# Sidebar components
-sideb = st.sidebar
-warning_con = st.container()
+if 'session_id' not in st.session_state or 'evaluation_id' not in st.session_state:
+    session_id, evaluation_id = login_and_get_evaluation_id(USERNAME, PASSWORD)
+    if session_id and evaluation_id:
+        st.session_state.session_id = session_id
+        st.session_state.evaluation_id = evaluation_id
+else:
+    warning_con.success(f"Login successful! Evaluation ID: {st.session_state.evaluation_id}")
 
 with sideb.container(border=True):
     query = st.text_input("Input query:")
@@ -118,7 +200,7 @@ with sideb.container(border=True):
             warning_con.warning("Please enter query and No. of images first")
 
 # Tabs for search results and expanded results
-tabs = st.tabs(["Search Results", "Expanded Images"])
+tabs = st.tabs(["Search Results", "Expanded Images", "Submissions", "Authorization"])
 
 # Display images and allow selection
 with tabs[0]:
@@ -171,7 +253,7 @@ with sideb.container(border=True):
             nearby_frames = get_nearby_frames(selected_path, st.session_state.expand_count)
             st.session_state.expanded_images = [(frame, f"Video ID: {video_id}\nFrame Index: {frame_idx}\nPath: {os.path.splitext(os.path.relpath(frame, start='Data/improved_keyframes'))[0]}")
                                                 for frame in nearby_frames
-                                                for video_id, frame_idx in [extract_video_id_and_frame_idx(frame, keyframeMapper)]]
+                                                for video_id, frame_idx, _ in [extract_video_id_and_info(frame, keyframeMapper)]]
         elif not st.session_state.selected_search_images:
             warning_con.warning("Please select an image to expand.")
         else:
@@ -187,6 +269,63 @@ with tabs[1]:
             return_value="index",
             use_container_width=False
         )
+with tabs[2]:
+    col1, col2 = st.columns([1, 1])
+    edited_df = pd.DataFrame()
+    with col1:
+        st.subheader("Submissions")
+        submission_type = st.selectbox("Select Submission Type", options=["KIS", "QA"], index=0)
+        if st.session_state.images or st.session_state.expanded_images:
+            selected_images = ([st.session_state.images[i] for i in st.session_state.selected_search_images if i < len(st.session_state.images)] +
+                        [st.session_state.expanded_images[i] for i in st.session_state.selected_expanded_images if i < len(st.session_state.expanded_images)])
+            if not selected_images:
+                selected_images = st.session_state.images
+            new_data = []
+            for path, _ in selected_images:
+                video_id, frame_idx, pts_time = extract_video_id_and_info(path, keyframeMapper)
+                new_data.append({
+                    'Video ID': str(video_id),
+                    'Frame Index': str(frame_idx),
+                    'pts_time': int(pts_time*1000),
+                    'Path': path
+                })
+            df = pd.DataFrame(new_data).drop_duplicates()
+            if submission_type == "QA":
+                df["QA"] = ""
+            elif submission_type == "KIS":
+                df["end_time"] = df["pts_time"]
+            edited_df = st.data_editor(df, num_rows="dynamic", hide_index=False)
+
+            if st.button("Submit"):
+                st.write(submission(edited_df, submission_type, st.session_state.session_id, st.session_state.evaluation_id))
+        else:
+            st.write("No submissions yet. Please select images")
+    with col2:
+        if not edited_df.empty:
+            st.subheader("Preview")
+            selected_index = st.number_input("Select a row to preview video", min_value=0, max_value=edited_df.shape[0]-1)
+            if selected_index in edited_df.index:
+                video = VIDEOS_PATH + "/" + edited_df.loc[selected_index, 'Video ID'] + ".mp4"
+                start_time = edited_df.loc[selected_index, 'pts_time'] / 1000
+                st.video(data=video, start_time=start_time)
+
+        
+with tabs[3]:
+    st.subheader("Authorization")
+    st.write("In case there is error with sessionID, evaluationID. Login again to get new ones")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        with st.form("Login"):
+            st.markdown("#### Enter your credentials")
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password") 
+            submit = st.form_submit_button("Login")
+    if submit:
+        session_id, evaluation_id = login_and_get_evaluation_id(username, password)
+        if session_id and evaluation_id:
+            st.session_state.session_id = session_id
+            st.session_state.evaluation_id = evaluation_id
+            st.rerun()
 
 # Download results functionality
 if st.session_state.images or st.session_state.expanded_images:
