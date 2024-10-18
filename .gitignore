@@ -28,6 +28,7 @@ test3.py
 test4.py
 static
 test3.py
+bike.jpg
 __pycache__
 DataPreprocessing/TransNetV2
 input/
@@ -35,3 +36,4 @@ output/
 submission/
 submission.zip
 images.jfif
+.streamlit(renametouse)

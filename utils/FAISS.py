@@ -51,8 +51,10 @@ class Th3Faiss:
 
         if model == "clip":   
            query_features = self.clip_model.encode_query(query)
+           self.clip_model.clear_cuda_memory()
         elif model == "blip":
             query_features = self.blip_model.encode_query(query)
+            self.blip_model.clear_cuda_memory()
             
         query_features = query_features.cpu().detach().numpy().astype(np.float32)
 
@@ -85,13 +87,51 @@ class Th3Faiss:
 
         return scores, keyframe_paths, idx_image
     
-    def search_by_ocr(self, query, k):
-        scores, keyframe_paths, idx_image = self.OCRDetector.search(query, k)
+    def search_by_ocr(self, query, k, class_dict, index, filter_type):
+        scores, keyframe_paths, idx_image = self.OCRDetector.search(query, k, index, filter_type)
+        scores, keyframe_paths, idx_image = self.ObjectDetector.reranking(scores, keyframe_paths, idx_image, class_dict)
         return scores, keyframe_paths, idx_image
     
-    def search_by_speech(self, query, k):
-        scores, keyframe_paths, idx_image = self.SpeechDetector.search(query, k)
+    def search_by_speech(self, query, k, class_dict, index, filter_type):
+        scores, keyframe_paths, idx_image = self.SpeechDetector.search(query, k, index, filter_type)
+        scores, keyframe_paths, idx_image = self.ObjectDetector.reranking(scores, keyframe_paths, idx_image, class_dict)
         return scores, keyframe_paths, idx_image
 
+    def search_by_image(self, image, k, class_dict, index, filter_type, model):
+        if model == "clip":   
+           image_features = self.clip_model.encode_image(image)
+        elif model == "blip":
+            image_features = self.blip_model.encode_image(image)
+            
+        image_features = image_features.cpu().detach().numpy().astype(np.float32)
+
+        if model == "clip":
+            chosen_model = self.index
+        elif model == "blip":
+            chosen_model = self.blip_index
+
+        if index is None:
+            scores, idx_image = chosen_model.search(image_features, k=k)
+        elif filter_type == "including":
+            # Search for direct image (for DEBUG only)
+            id_selector = faiss.IDSelectorArray(index)
+            scores, idx_image = chosen_model.search(image_features, k=1, params=faiss.SearchParametersIVF(sel=id_selector)) 
+        elif filter_type == "excluding":
+            filter_ids = [id for id in range(self.index.ntotal) if id not in index]
+            id_selector = faiss.IDSelectorArray(filter_ids)
+            scores, idx_image = chosen_model.search(image_features, k=k, params=faiss.SearchParametersIVF(sel=id_selector))
+        
+        if isinstance(idx_image, int): 
+            idx_image = [idx_image]
+            scores = [scores]
+
+        scores = scores.flatten()
+        idx_image = idx_image.flatten()
+        keyframe_paths = [self.idx2keyframe[idx] for idx in idx_image]
+
+        #Reranking with ObjectDetector
+        scores, keyframe_paths, idx_image = self.ObjectDetector.reranking(scores, keyframe_paths, idx_image, class_dict)
+
+        return scores, keyframe_paths, idx_image
 
 

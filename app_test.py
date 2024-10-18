@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore")
 import streamlit as st
 from streamlit_dash import image_select
 from utils.FAISS import Th3Faiss
@@ -5,12 +7,14 @@ import json
 import os
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 from utils.utils import get_nearby_frames, extract_video_id_and_info
-from config import USERNAME, PASSWORD, VIDEOS_PATH
+from config import USERNAME, PASSWORD, VIDEOS_PATH, METADATA_PATH
+from st_aggrid import AgGrid, ColumnsAutoSizeMode
+from st_aggrid.grid_options_builder import GridOptionsBuilder
+from streamlit_paste_button import paste_image_button as pbutton
 import csv
 import io
 import re
 import pandas as pd
-import warnings
 import requests
 
 st.set_page_config(layout="wide")
@@ -49,13 +53,16 @@ my_faiss, keyframeMapper, classesList = load_faiss_and_data()
 
 def get_images_from_query(query, k, search_type, model, class_dict_str, index, filter_type):
     print(class_dict_str)
+    print(index)
     if search_type == "text":
         scores, keyframe_paths, idx_images = my_faiss.search_by_text(query, k, class_dict_str, index, filter_type, model)
     elif search_type == "speech":
-        scores, keyframe_paths, idx_images = my_faiss.search_by_speech(query, k)
-    else:
-        scores, keyframe_paths, idx_images = my_faiss.search_by_ocr(query, k)
-
+        scores, keyframe_paths, idx_images = my_faiss.search_by_speech(query, k, class_dict_str, index, filter_type)
+    elif search_type == "ocr": 
+        scores, keyframe_paths, idx_images = my_faiss.search_by_ocr(query, k, class_dict_str, index, filter_type)
+    elif search_type == "image":
+        scores, keyframe_paths, idx_images = my_faiss.search_by_image(query, k, class_dict_str, index, filter_type, model)
+ 
     return [(path, f"Score: {score:.4f} \n Index: {idx} \n Path: {os.path.splitext(os.path.relpath(path, start='Data/improved_keyframes'))[0]} \n Frame_idx: {extract_video_id_and_info(path, keyframeMapper)[1]}")
             for score, path, idx in zip(scores, keyframe_paths, idx_images)]
 
@@ -66,6 +73,11 @@ def download_as_csv(keyframe_paths):
         video_id, frame_idx, _ = extract_video_id_and_info(path, keyframeMapper)
         writer.writerow([video_id, frame_idx])
     return output.getvalue()
+
+def get_youtube_link(video_id):
+    with open(video_id, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        return data.get('watch_url')
 
 def sort_images_by_video_id(images_with_captions):
     sorted_images = {}
@@ -78,7 +90,7 @@ def map_selected_indices_to_global(selected_local_indices, video_images, global_
     return [next(i for i, (path, _) in enumerate(global_images) if path == video_images[local_idx][0])
             for local_idx in selected_local_indices]
 
-def login_and_get_evaluation_id(username, password):
+def login(username, password):
     try:
         login_url = "https://eventretrieval.one/api/v2/login"
         login_payload = {
@@ -92,22 +104,31 @@ def login_and_get_evaluation_id(username, password):
         
         session_data = login_response.json()
         session_id = session_data.get('sessionId')
-        
+
+        return session_id
+
+    except requests.exceptions.HTTPError as http_err:
+        warning_con.warning(f"HTTP error occurred: {http_err}")
+        return None
+    except Exception as err:
+        warning_con.warning(f"Other error occurred: {err}")
+        return None
+
+def fetch_question(session_id):
+    try:
         evaluation_url = f"https://eventretrieval.one/api/v2/client/evaluation/list?session={session_id}"
         evaluation_response = requests.get(evaluation_url)
         evaluation_response.raise_for_status() 
         
         evaluation_data = evaluation_response.json()
-        evaluation_id = evaluation_data[0].get('id')
-
-        return session_id, evaluation_id
-
+        task_to_id_map = {task["name"]: item["id"] for item in evaluation_data for task in item["taskTemplates"]}
     except requests.exceptions.HTTPError as http_err:
         warning_con.warning(f"HTTP error occurred: {http_err}")
-        return None, None
+        return None
     except Exception as err:
         warning_con.warning(f"Other error occurred: {err}")
-        return None, None
+        return None
+    return task_to_id_map
     
 def submission(df, submission_type, session_id, evaluation_id):
     answer_sets = []
@@ -155,17 +176,21 @@ for key in ['images', 'expanded_images', 'selected_search_images', 'selected_exp
             'expand_count', 'class_dict', 'accumulated_unselected_indices', 'search_type']:
     if key not in st.session_state:
         st.session_state[key] = [] if key.startswith('selected') or key in ['images', 'expanded_images', 'accumulated_unselected_indices'] else 3 if key == 'expand_count' else {} if key == 'class_dict' else None
-if 'session_id' not in st.session_state or 'evaluation_id' not in st.session_state:
-    session_id, evaluation_id = login_and_get_evaluation_id(USERNAME, PASSWORD)
-    if session_id and evaluation_id:
+if 'session_id' not in st.session_state:
+    session_id = login(USERNAME, PASSWORD)
+    if session_id:
         st.session_state.session_id = session_id
-        st.session_state.evaluation_id = evaluation_id
+    else:
+        st.session_state.session_id = None
 else:
-    warning_con.success(f"Login successful! Evaluation ID: {st.session_state.evaluation_id}")
+    warning_con.success(f"Login successful!")
 
 with sideb.container(border=True):
     query = st.text_input("Input query:")
     idx = st.number_input("Index:", min_value=0, value=None)
+    image = pbutton(label="Upload image from Clipboard", errors="raise").image_data
+    if image:
+        st.success("Sucessfully Uploaded!")
 
 with sideb.container(border=True):
     model = st.selectbox("Select Model", options=["clip", "blip"], index=0)
@@ -185,19 +210,25 @@ st.markdown(" ".join([f"{obj}: {count}" for obj, count in st.session_state.class
 with sideb.container(border=True):
     k = st.number_input("No. of images:", min_value=1, value=10)
     col5, col6 = st.columns(2)
-    search_type = col5.selectbox("Search Type", options=["text", "ocr", "speech"], index=0)
+    search_type = col5.selectbox("Search Type", options=["text", "ocr", "speech", "image"], index=0)
     sort_type = st.selectbox("Sort Type", options=["default", "video_id"], index=0)
     if col6.button("Search"):
-        if query and k:
-            st.session_state.search_type = search_type
-            st.session_state.images = get_images_from_query(query, k, st.session_state.search_type, model, 
-                                                            st.session_state.class_dict, idx, "including")
+        if k:
+            if search_type in ["text", "ocr", "speech"] and query:
+                st.session_state.search_type = search_type
+                st.session_state.images = get_images_from_query(query, k, st.session_state.search_type, model, 
+                                                                st.session_state.class_dict, idx, "including")
+            elif search_type == "image" and image:
+                st.session_state.search_type = search_type
+                st.session_state.images = get_images_from_query(image, k, st.session_state.search_type, model, 
+                                                                st.session_state.class_dict, idx, "including")
             st.session_state.expanded_images = []
             st.session_state.selected_search_images = []
             st.session_state.selected_expanded_images = []
             st.session_state.accumulated_unselected_indices = []
+        
         else:
-            warning_con.warning("Please enter query and No. of images first")
+            warning_con.warning("Please enter query or select an image, and specify the number of images (k)")
 
 # Tabs for search results and expanded results
 tabs = st.tabs(["Search Results", "Expanded Images", "Submissions", "Authorization"])
@@ -230,18 +261,20 @@ with tabs[0]:
             st.session_state.selected_search_images = temp_selected_indices
 
         if len(st.session_state.images) != 1 and sideb.button("Search Again with Feedback"):
-            if st.session_state.search_type == "text":
-                unselected_indices = [int(re.search(r'Index: (\d+)', caption).group(1))
-                                      for i, (_, caption) in enumerate(st.session_state.images)
-                                      if i not in st.session_state.selected_search_images]
-                st.session_state.accumulated_unselected_indices.extend(unselected_indices)
+            unselected_indices = [int(re.search(r'Index: (\d+)', caption).group(1))
+                                    for i, (_, caption) in enumerate(st.session_state.images)
+                                    if i not in st.session_state.selected_search_images]
+            st.session_state.accumulated_unselected_indices.extend(unselected_indices)
+            if st.session_state.search_type in ["text", "ocr", "speech"]:
                 st.session_state.images = get_images_from_query(query, k, st.session_state.search_type, model,
                                                                 st.session_state.class_dict,
                                                                 st.session_state.accumulated_unselected_indices, "excluding")
-                st.session_state.selected_search_images = []
-                st.rerun()
-            else:
-                warning_con.warning("Search again is currently available for Text method only")
+            elif st.session_state.search_type == "image":
+                st.session_state.images = get_images_from_query(image, k, st.session_state.search_type, model,
+                                                                st.session_state.class_dict,
+                                                                st.session_state.accumulated_unselected_indices, "excluding")
+            st.session_state.selected_search_images = []
+            st.rerun()
 
 # Expand functionality
 with sideb.container(border=True):
@@ -271,48 +304,76 @@ with tabs[1]:
         )
 with tabs[2]:
     col1, col2 = st.columns([1, 1])
-    edited_df = pd.DataFrame()
+    sel_row = None
     with col1:
         st.subheader("Submissions")
-        submission_type = st.selectbox("Select Submission Type", options=["KIS", "QA"], index=0)
-        if st.session_state.images or st.session_state.expanded_images:
-            selected_images = ([st.session_state.images[i] for i in st.session_state.selected_search_images if i < len(st.session_state.images)] +
-                        [st.session_state.expanded_images[i] for i in st.session_state.selected_expanded_images if i < len(st.session_state.expanded_images)])
-            if not selected_images:
-                selected_images = st.session_state.images
-            new_data = []
-            for path, _ in selected_images:
-                video_id, frame_idx, pts_time = extract_video_id_and_info(path, keyframeMapper)
-                new_data.append({
-                    'Video ID': str(video_id),
-                    'Frame Index': str(frame_idx),
-                    'pts_time': int(pts_time*1000),
-                    'Path': path
-                })
-            df = pd.DataFrame(new_data).drop_duplicates()
-            if submission_type == "QA":
-                df["QA"] = ""
-            elif submission_type == "KIS":
-                df["end_time"] = df["pts_time"]
-            edited_df = st.data_editor(df, num_rows="dynamic", hide_index=False)
-
-            if st.button("Submit"):
-                st.write(submission(edited_df, submission_type, st.session_state.session_id, st.session_state.evaluation_id))
+        task_to_id_map = fetch_question(st.session_state.session_id)
+        if not task_to_id_map:
+            warning_con.warning("Please head to Authorization tab for new sessionID")
         else:
-            st.write("No submissions yet. Please select images")
-    with col2:
-        if not edited_df.empty:
-            st.subheader("Preview")
-            selected_index = st.number_input("Select a row to preview video", min_value=0, max_value=edited_df.shape[0]-1)
-            if selected_index in edited_df.index:
-                video = VIDEOS_PATH + "/" + edited_df.loc[selected_index, 'Video ID'] + ".mp4"
-                start_time = edited_df.loc[selected_index, 'pts_time'] / 1000
-                st.video(data=video, start_time=start_time)
+            task_name = st.selectbox("Select Task", options=list(task_to_id_map.keys()))
+            task_id = task_to_id_map[task_name]
+            if "qa" in task_name:
+                submission_type = "QA"
+            elif "kis" in task_name:
+                submission_type = "KIS"
+            else:
+                submission_type = "KIS"
+            if st.session_state.images or st.session_state.expanded_images:
+                selected_images = ([st.session_state.images[i] for i in st.session_state.selected_search_images if i < len(st.session_state.images)] +
+                            [st.session_state.expanded_images[i] for i in st.session_state.selected_expanded_images if i < len(st.session_state.expanded_images)])
+                if not selected_images:
+                    selected_images = st.session_state.images
+                new_data = []
+                for path, _ in selected_images:
+                    video_id, frame_idx, pts_time = extract_video_id_and_info(path, keyframeMapper)
+                    new_data.append({
+                        'Video ID': str(video_id),
+                        'Frame Index': str(frame_idx),
+                        'pts_time': int(pts_time*1000),
+                        'Path': os.path.relpath(path, "Data/improved_keyframes")
+                    })
+                df = pd.DataFrame(new_data).drop_duplicates()
+                if submission_type == "QA":
+                    df.insert(3, "QA", "")
+                elif submission_type == "KIS":
+                    df.insert(3, "end_time", df["pts_time"])
+                # edited_df = st.data_editor(df, num_rows="dynamic", hide_index=False)
 
-        
+                gd = GridOptionsBuilder.from_dataframe(df)
+                gd.configure_pagination(enabled=True)
+                gd.configure_default_column(editable=True, groupable=True, resizable=False)
+                gd.configure_selection(selection_mode='single')
+                gridoptions = gd.build()
+                edited_df = AgGrid(df, gridOptions=gridoptions, allow_unsafe_jscode=True, fit_columns_on_grid_load=True, columns_auto_size_mode=ColumnsAutoSizeMode.FIT_ALL_COLUMNS_TO_VIEW)
+
+                sel_row = edited_df["selected_rows"]
+                if st.button("Submit"):
+                    st.write(sel_row)
+                    if isinstance(sel_row, pd.DataFrame):
+                        st.write(submission(sel_row, submission_type, st.session_state.session_id, task_id))
+                    else:
+                        st.warning("Please select a row for submission")
+            else:
+                st.write("No submissions yet. Please select images")
+    with col2:
+        if isinstance(sel_row, pd.DataFrame):
+            st.subheader("Preview")
+            st.write("Preview cutscene before submitting")
+            video = sel_row['Video ID'].iloc[0]
+            start_time = sel_row['pts_time'].iloc[0] / 1000
+            if os.path.exists(VIDEOS_PATH):
+                video = os.path.join(VIDEOS_PATH, f"{video_id}.mp4")
+                st.video(data=video, start_time=start_time)
+            else:
+                st.warning("Local video not available. Streaming from Youtube...")
+                video = os.path.join(METADATA_PATH, f"{video_id}.json")
+                video = get_youtube_link(video)
+                st.video(data=video, start_time=start_time)
+       
 with tabs[3]:
     st.subheader("Authorization")
-    st.write("In case there is error with sessionID, evaluationID. Login again to get new ones")
+    st.write("In case there is error with sessionID. Login again to get new ones")
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("Login"):
@@ -321,10 +382,9 @@ with tabs[3]:
             password = st.text_input("Password", type="password") 
             submit = st.form_submit_button("Login")
     if submit:
-        session_id, evaluation_id = login_and_get_evaluation_id(username, password)
-        if session_id and evaluation_id:
+        session_id = login(username, password)
+        if session_id:
             st.session_state.session_id = session_id
-            st.session_state.evaluation_id = evaluation_id
             st.rerun()
 
 # Download results functionality
