@@ -17,3 +17,6 @@ Firstly, prepare data as:
 - OD extraction: [saving_class_dict.py](DataPreprocessing/Yolov10-AIChallenge/saving_class_dict.py)
 - Audio extraction: [extract_audio.py](DataPreprocessing/PaddleOCR/extract_audio.py)
 - Finally, run all create_*.py before using the app.
+
+**NOTE:**
+For OCR and OD, you need to clone the official github (PaddleOCR & Yolov10) to run the preprocessing files (conflicts with main env).
