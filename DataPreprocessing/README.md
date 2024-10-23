@@ -7,6 +7,10 @@ Firstly, prepare data as:
     | - L01_V001.mp4
     | - L01_V002.mp4
     | - ...
+  | - media-info
+    | - L01_V001.json
+    | - L01_V002.json
+    | - ...
 ```
 ## Usage
 - Scene extraction: [extract_scenes.ipynb](DataPreprocessing/extract_scenes.ipynb)
