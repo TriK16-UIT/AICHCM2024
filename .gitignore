@@ -1,7 +1,7 @@
 Data/
 .venv/
 DataPreprocessing/*
-!DataPreprocessing/**/
+DataPreprocessing/**
 !DataPreprocessing/Yolov10-AIChallenge/saving_class_dict.py
 !DataPreprocessing/PaddleOCR/extract_ocr.py
 !DataPreprocessing/*.ipynb
