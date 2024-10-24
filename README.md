@@ -24,6 +24,8 @@ This project implements a video search system that retrieves keyframes from vide
     | - faiss_clip_h14.bin
     | - ...
 ```
+## Preprocessing
+Further information on: [preprocessing](DataPreprocessing/README.md)
 ## Installation
 To set up the environment, first install the required Python dependencies:
 ```bash
