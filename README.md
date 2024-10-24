@@ -40,3 +40,6 @@ Once the installation is complete, you can start the video search system:
 ```bash
 streamlit run app_test.py
 ```
+
+## Interface
+<img src="./figs/app.png" alt="image" style="zoom:50%;" />
